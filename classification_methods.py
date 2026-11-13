@@ -119,7 +119,7 @@ def topsis(X, weights, criteria_types):
     return RC, ranking
 
 
-def vikor(X, weights, criteria_types, v=0.5):
+def vikor(X, weights, criteria_types, v=0.5, return_details=False):
     X = validate_matrix(X)
     weights = validate_weights(weights)
 
@@ -216,4 +216,41 @@ def vikor(X, weights, criteria_types, v=0.5):
     # 10. Classement : plus petit Q = meilleur
     ranking = np.argsort(Q) + 1
 
+    if return_details:
+        return Q, ranking, S, R
+
     return Q, ranking
+
+
+def vikor_compromise(Q, S, R):
+    """Apply VIKOR's acceptable-advantage and stability conditions."""
+    Q, S, R = (np.asarray(values, dtype=float) for values in (Q, S, R))
+    if Q.ndim != 1 or S.shape != Q.shape or R.shape != Q.shape:
+        raise ValueError("Q, S et R doivent avoir la même forme 1D.")
+    if len(Q) < 2 or not all(np.all(np.isfinite(values)) for values in (Q, S, R)):
+        raise ValueError("Il faut au moins deux alternatives et des valeurs finies.")
+
+    order = np.argsort(Q)
+    first, second = order[:2]
+    threshold = 1 / (len(Q) - 1)
+
+    advantage = bool(Q[second] - Q[first] >= threshold - 1e-12)
+    stability = bool(
+        np.isclose(S[first], S.min()) and np.isclose(R[first], R.min())
+    )
+
+    if not advantage:
+        solutions = [
+            int(index) for index in order
+            if Q[index] - Q[first] < threshold
+        ]
+    elif not stability:
+        solutions = [int(first), int(second)]
+    else:
+        solutions = [int(first)]
+
+    return {
+        "advantage": advantage,
+        "stability": stability,
+        "solutions": solutions,
+    }

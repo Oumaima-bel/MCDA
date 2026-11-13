@@ -14,6 +14,12 @@ def ahp(comparaison_matrix):
     if comparaison_matrix.shape[0] != comparaison_matrix.shape[1]:
         raise ValueError("La matrice AHP doit être carrée.")
 
+    if comparaison_matrix.shape[0] == 0:
+        raise ValueError("La matrice AHP doit contenir au moins un critère.")
+
+    if not np.all(np.isfinite(comparaison_matrix)):
+        raise ValueError("La matrice AHP contient des valeurs invalides.")
+
     if np.any(comparaison_matrix <= 0):
         raise ValueError("Les valeurs de la matrice AHP doivent être strictement positives.")
 
@@ -26,6 +32,31 @@ def ahp(comparaison_matrix):
     weights = np.mean(normalized_matrix, axis=1)
 
     return weights
+
+
+RI_TABLE = {
+    1: 0.0, 2: 0.0, 3: 0.58, 4: 0.90, 5: 1.12, 6: 1.24, 7: 1.32,
+    8: 1.41, 9: 1.45, 10: 1.56, 11: 1.51, 12: 1.48, 13: 1.56,
+    14: 1.57, 15: 1.59,
+}
+
+
+def ahp_consistency(comparaison_matrix):
+    """Return lambda_max, CI, CR, and whether the matrix is consistent."""
+    matrix = np.asarray(comparaison_matrix, dtype=float)
+    weights = ahp(matrix)
+    n = matrix.shape[0]
+
+    if n not in RI_TABLE:
+        raise ValueError("Le test AHP est disponible pour 1 à 15 critères.")
+
+    lambda_max = float(np.mean((matrix @ weights) / weights))
+    if n <= 2:
+        return lambda_max, 0.0, 0.0, True
+
+    ci = max(0.0, (lambda_max - n) / (n - 1))
+    cr = ci / RI_TABLE[n]
+    return lambda_max, ci, cr, bool(cr < 0.1)
 
 
 def bwm(bo, ow):
