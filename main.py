@@ -745,48 +745,48 @@ except Exception as e:
 
 # COMPARAISON DES METHODES (ROBUSTESSE)
 
-st.header("Comparaison des méthodes (corrélation de Spearman)")
+# st.header("Comparaison des méthodes (corrélation de Spearman)")
 
-try:
-    def to_ranks(order):
-        rank_values = np.empty(len(order), dtype=int)
-        for position, alternative_index in enumerate(order, start=1):
-            rank_values[alternative_index - 1] = position
-        return rank_values
+# try:
+#     def to_ranks(order):
+#         rank_values = np.empty(len(order), dtype=int)
+#         for position, alternative_index in enumerate(order, start=1):
+#             rank_values[alternative_index - 1] = position
+#         return rank_values
 
-    all_ranks = {
-        "WSM": to_ranks(waspas(X, weights, criteria_types, lam=1.0)[1]),
-        "WPM": to_ranks(waspas(X, weights, criteria_types, lam=0.0)[1]),
-        "WASPAS": to_ranks(waspas(X, weights, criteria_types)[1]),
-        "TOPSIS": to_ranks(topsis(X, weights, criteria_types)[1]),
-        "VIKOR": to_ranks(vikor(X, weights, criteria_types)[1]),
-    }
+#     all_ranks = {
+#         "WSM": to_ranks(waspas(X, weights, criteria_types, lam=1.0)[1]),
+#         "WPM": to_ranks(waspas(X, weights, criteria_types, lam=0.0)[1]),
+#         "WASPAS": to_ranks(waspas(X, weights, criteria_types)[1]),
+#         "TOPSIS": to_ranks(topsis(X, weights, criteria_types)[1]),
+#         "VIKOR": to_ranks(vikor(X, weights, criteria_types)[1]),
+#     }
 
-    if fuzzy_X is not None:
-        all_ranks["Fuzzy TOPSIS"] = to_ranks(
-            fuzzy_topsis(
-                fuzzy_X,
-                fuzzy_W if fuzzy_W is not None else weights,
-                criteria_types,
-            )[1]
-        )
-    if if_X is not None:
-        comparison_weights = (
-            if_W if if_W is not None else crisp_to_if_weights(weights)
-        )
-        all_ranks["IF-TOPSIS"] = to_ranks(
-            if_topsis(if_X, comparison_weights, criteria_types)[1]
-        )
+#     if fuzzy_X is not None:
+#         all_ranks["Fuzzy TOPSIS"] = to_ranks(
+#             fuzzy_topsis(
+#                 fuzzy_X,
+#                 fuzzy_W if fuzzy_W is not None else weights,
+#                 criteria_types,
+#             )[1]
+#         )
+#     if if_X is not None:
+#         comparison_weights = (
+#             if_W if if_W is not None else crisp_to_if_weights(weights)
+#         )
+#         all_ranks["IF-TOPSIS"] = to_ranks(
+#             if_topsis(if_X, comparison_weights, criteria_types)[1]
+#         )
 
-    st.subheader("Rangs par méthode")
-    st.dataframe(
-        pd.DataFrame(all_ranks, index=alternative_names),
-        use_container_width=True,
-    )
-    st.subheader("Matrice de corrélation de Spearman")
-    st.dataframe(spearman_matrix(all_ranks).round(2), use_container_width=True)
-except Exception as e:
-    st.warning(f"Comparaison impossible : {e}")
+#     st.subheader("Rangs par méthode")
+#     st.dataframe(
+#         pd.DataFrame(all_ranks, index=alternative_names),
+#         use_container_width=True,
+#     )
+#     st.subheader("Matrice de corrélation de Spearman")
+#     st.dataframe(spearman_matrix(all_ranks).round(2), use_container_width=True)
+# except Exception as e:
+#     st.warning(f"Comparaison impossible : {e}")
 
 
 # RAPPEL
