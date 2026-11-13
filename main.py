@@ -228,11 +228,11 @@ n_criteria = st.sidebar.number_input(
 
 decision_mode = st.sidebar.radio(
     "Nature des évaluations",
-    ["Crisp", "Fuzzy", "Fuzzy intuitionniste"],
+    ["Crisp", "Fuzzy"],#, "Fuzzy intuitionniste"
     help=(
         "Crisp : valeurs numériques précises. "
-        "Fuzzy : variables linguistiques (TFN). "
-        "Fuzzy intuitionniste : couples (μ, ν)."
+        "Fuzzy : variables linguistiques (TFN). "#"Fuzzy intuitionniste : couples (μ, ν)."
+        
     )
 )
 
@@ -246,8 +246,8 @@ ranking_options = ["WSM", "WPM", "WASPAS", "TOPSIS", "VIKOR"]
 
 if decision_mode == "Fuzzy":
     ranking_options.append("Fuzzy TOPSIS")
-elif decision_mode == "Fuzzy intuitionniste":
-    ranking_options.append("IF-TOPSIS")
+# elif decision_mode == "Fuzzy intuitionniste":
+#     ranking_options.append("IF-TOPSIS")
 
 ranking_method = st.sidebar.selectbox(
     "Méthode de classement",
