@@ -2,7 +2,6 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 
-
 from classification_methods import (
     validate_weights, waspas, topsis, vikor, vikor_compromise
 )
@@ -16,6 +15,9 @@ from intuitionistic_methods import (
     if_score, if_topsis, crisp_to_if_weights
 )
 from robustness import spearman_matrix
+from read_files import (
+    excel_sheet_names, read_ahp_file, read_bwm_file, read_decision_file,
+)
 
 
 # CONFIGURATION
@@ -205,36 +207,246 @@ st.markdown(PALETTE_CSS, unsafe_allow_html=True)
 st.title("📊 Application MCDA")
 
 
+# MODE D'EMPLOI
+
+
+with st.expander(" Mode d'emploi de l'application",expanded=True):
+    st.markdown("""
+    **Temps de lecture estimé : 3 minutes**
+
+    Cette application vous aide à **choisir la meilleure option parmi plusieurs possibilités**, en tenant compte de plusieurs critères.
+
+    *Exemple :* pour choisir une voiture, vous pouvez comparer son prix, sa consommation, son confort et sa sécurité.
+
+    ### 1. Paramètres
+    Dans la barre latérale, choisissez :
+    - **Crisp** : vous utilisez des valeurs numériques précises.
+    - **Fuzzy** : vous utilisez des appréciations comme *Faible, Moyen, Élevé*.
+    - Le nombre d'alternatives (options) et de critères.
+    - Le nombre de décideurs (en mode Fuzzy).
+    - La méthode de pondération et la méthode de classement.
+
+    ### 2. Définir votre problème
+    - **Alternatives** : les options à comparer (ex. : Voiture A, B et C).
+    - **Critères** : les éléments utilisés pour les comparer (ex. : Prix, Confort, Consommation).
+    - **Type de critère** :
+        - **Positif (+)** : une valeur élevée est préférable (qualité, confort).
+        - **Négatif (-)** : une valeur faible est préférable (prix, coût, délai).
+
+    ### 3. Remplir la matrice de décision
+    C'est le tableau qui contient les évaluations de chaque alternative selon chaque critère.
+    - En mode **Crisp**, saisissez des nombres.
+    - En mode **Fuzzy**, choisissez une appréciation linguistique pour chaque case.
+    - Si plusieurs décideurs participent, chacun dispose de son propre onglet.
+
+    Vous pouvez également importer vos données depuis un fichier.
+
+    ### 4. Calculer les poids des critères
+    Un **poids** représente l'importance d'un critère dans la décision. Plus il est élevé, plus le critère compte dans le résultat final.
+
+    Choisissez une méthode :
+    - **AHP** : comparez les critères deux à deux selon leur importance (échelle de 1 à 9). Le CR doit être inférieur à 0,1 pour garantir une bonne cohérence des jugements.
+    - **BWM** : choisissez le critère le plus important (*Best*) et le moins important (*Worst*), puis comparez-les aux autres critères.
+    - **Entropie** : calcule automatiquement les poids à partir des différences entre les évaluations.
+    - **CRITIC** : calcule les poids en tenant compte des différences entre les évaluations et des relations entre les critères.
+    - **Linguistique (Fuzzy)** : attribuez une importance à chaque critère à l'aide de termes linguistiques.
+
+    Les poids calculés sont affichés dans un tableau.
+
+    ### 5. Classer les alternatives
+    L'application utilise la méthode choisie pour calculer un score pour chaque alternative.
+    - **WSM, WPM et WASPAS** : le score le plus élevé est le meilleur.
+    - **TOPSIS** : le score le plus élevé indique la meilleure alternative.
+    - **VIKOR** : le score Q le plus faible est le meilleur.
+    - **Fuzzy TOPSIS** : même principe que TOPSIS, mais avec des évaluations floues.
+
+    Le résultat comprend un classement, les scores et un graphique.
+
+    ### 6. Comparer les méthodes
+    En bas de page, vous trouverez :
+    - Un tableau comparant les classements obtenus avec les différentes méthodes.
+    - Une matrice de corrélation de Spearman, qui mesure la ressemblance entre les classements. Une valeur proche de **1** signifie que les méthodes donnent des résultats similaires.
+
+    ###  Importer vos données
+    L'application accepte les fichiers **CSV, XLSX et XLS**.
+
+    | Données | Où les importer ? |
+    |---|---|
+    | Matrice de décision | Barre latérale |
+    | Matrice de comparaison AHP | Section Pondération → AHP |
+    | Comparaisons BO et OW (BWM) | Section Pondération → BWM |
+    | Matrices Fuzzy | Barre latérale (un fichier par décideur) |
+
+    Un modèle CSV est proposé pour chaque type d'importation. Vous pouvez modifier les données après leur importation.
+
+    **Remarque :** les importances linguistiques en mode Fuzzy doivent être saisies directement dans l'application.
+    """)
+
+
+
+# INTERFACE
+
+# ==========================================
+# IMPORT D'UNE MATRICE DE DECISION (CSV / Excel)
+# ==========================================
+
+def choose_sheet(uploaded, container, key):
+    if uploaded.name.lower().endswith(".csv"):
+        return None
+    sheets = excel_sheet_names(uploaded)
+    if len(sheets) == 1:
+        return sheets[0]
+    return container.selectbox(
+        f"Feuille Excel ({uploaded.name})", sheets, key=f"sheet_{key}"
+    )
+
+
 # INTERFACE
 
 st.sidebar.header("⚙️ Paramètres")
 
-n_alternatives = st.sidebar.number_input(
-    "Nombre d'alternatives",
-    min_value=2,
-    max_value=20,
-    value=4,
-    step=1
-)
-
-n_criteria = st.sidebar.number_input(
-    "Nombre de critères",
-    min_value=2,
-    max_value=15,
-    value=4,
-    step=1
-)
+# Conteneurs créés d'abord pour garder l'ordre d'affichage :
+# le fichier importé détermine le nombre d'alternatives et de critères.
+count_box = st.sidebar.container()
+mode_box = st.sidebar.container()
+import_box = st.sidebar.container()
 
 
-decision_mode = st.sidebar.radio(
+decision_mode = mode_box.radio(
     "Nature des évaluations",
-    ["Crisp", "Fuzzy"],#, "Fuzzy intuitionniste"
+    ["Crisp", "Fuzzy", "Fuzzy intuitionniste"],
     help=(
         "Crisp : valeurs numériques précises. "
-        "Fuzzy : variables linguistiques (TFN). "#"Fuzzy intuitionniste : couples (μ, ν)."
+        "Fuzzy : variables linguistiques (TFN). "
+        "Fuzzy intuitionniste : couples (μ, ν)."
         
     )
 )
+
+imported = None
+imported_list = []
+import_id = "manual"
+
+
+def load_import(uploaded, labels, key):
+    sheet = None
+    if not uploaded.name.lower().endswith(".csv"):
+        sheets = excel_sheet_names(uploaded)
+        sheet = sheets[0]
+        if len(sheets) > 1:
+            sheet = import_box.selectbox(
+                f"Feuille Excel ({uploaded.name})", sheets, key=f"sheet_{key}"
+            )
+    return read_decision_file(uploaded, sheet, labels), sheet
+
+
+if decision_mode == "Crisp":
+    uploaded_file = import_box.file_uploader(
+        "📥 Importer la matrice de décision",
+        type=["csv", "xlsx", "xls"],
+        help=(
+            "1re ligne : noms des critères. "
+            "1re colonne : noms des alternatives (optionnelle). "
+            "Le reste : valeurs numériques."
+        ),
+    )
+    template = pd.DataFrame(
+        {"Alternative": ["A1", "A2", "A3"],
+         "C1": [10, 20, 30], "C2": [5, 3, 8], "C3": [100, 80, 90]}
+    ).to_csv(index=False).encode("utf-8")
+    import_box.download_button(
+        "Télécharger un modèle CSV", template,
+        file_name="modele_matrice.csv", mime="text/csv"
+    )
+
+    if uploaded_file is not None:
+        try:
+            imported, sheet = load_import(uploaded_file, None, "crisp")
+            imported_list = [imported]
+            import_id = f"{uploaded_file.name}_{uploaded_file.size}_{sheet}"
+            import_box.success(
+                f"Matrice importée : {len(imported['alternatives'])} alternatives "
+                f"× {len(imported['criteria'])} critères."
+            )
+        except Exception as e:
+            import_box.error(f"Import impossible : {e}")
+else:
+    fuzzy_labels = list(FUZZY_SCALE)
+    uploaded_files = import_box.file_uploader(
+        "📥 Importer les matrices (appréciations)",
+        type=["csv", "xlsx", "xls"],
+        accept_multiple_files=True,
+        help=(
+            "Un fichier par décideur, dans l'ordre (Décideur 1, 2, ...). "
+            "1re ligne : noms des critères. 1re colonne : noms des alternatives. "
+            "Le reste : termes de l'échelle linguistique (ou leur numéro 1, 2, 3...)."
+        ),
+    )
+    template_rows = [
+        [fuzzy_labels[(i + j) % len(fuzzy_labels)] for j in range(3)]
+        for i in range(3)
+    ]
+    template = pd.DataFrame(
+        template_rows, columns=["C1", "C2", "C3"],
+        index=["A1", "A2", "A3"]
+    ).rename_axis("Alternative").reset_index().to_csv(index=False).encode("utf-8")
+    import_box.download_button(
+        "Télécharger un modèle CSV", template,
+        file_name="modele_matrice_fuzzy.csv", mime="text/csv"
+    )
+    import_box.caption("Termes valides : " + ", ".join(str(l) for l in fuzzy_labels))
+
+    if uploaded_files:
+        try:
+            ids = []
+            for position, uploaded in enumerate(uploaded_files):
+                parsed, sheet = load_import(uploaded, fuzzy_labels, f"fuzzy_{position}")
+                if imported_list and (
+                    parsed["values"].shape != imported_list[0]["values"].shape
+                ):
+                    raise ValueError(
+                        f"« {uploaded.name} » n'a pas les mêmes dimensions "
+                        "que le premier fichier."
+                    )
+                imported_list.append(parsed)
+                ids.append(f"{uploaded.name}_{uploaded.size}_{sheet}")
+            imported = imported_list[0]
+            import_id = "|".join(ids)
+            import_box.success(
+                f"{len(imported_list)} matrice(s) importée(s) : "
+                f"{len(imported['alternatives'])} alternatives "
+                f"× {len(imported['criteria'])} critères. "
+                "Pensez à régler le nombre de décideurs."
+            )
+        except Exception as e:
+            imported = None
+            imported_list = []
+            import_id = "manual"
+            import_box.error(f"Import impossible : {e}")
+
+if imported is not None:
+    n_alternatives = len(imported["alternatives"])
+    n_criteria = len(imported["criteria"])
+    count_box.info(
+        f"Dimensions issues du fichier : {n_alternatives} alternatives, "
+        f"{n_criteria} critères."
+    )
+else:
+    n_alternatives = count_box.number_input(
+        "Nombre d'alternatives",
+        min_value=2,
+        max_value=20,
+        value=4,
+        step=1
+    )
+
+    n_criteria = count_box.number_input(
+        "Nombre de critères",
+        min_value=2,
+        max_value=15,
+        value=4,
+        step=1
+    )
 
 decision_makers = 1
 if decision_mode != "Crisp":
@@ -246,8 +458,8 @@ ranking_options = ["WSM", "WPM", "WASPAS", "TOPSIS", "VIKOR"]
 
 if decision_mode == "Fuzzy":
     ranking_options.append("Fuzzy TOPSIS")
-# elif decision_mode == "Fuzzy intuitionniste":
-#     ranking_options.append("IF-TOPSIS")
+elif decision_mode == "Fuzzy intuitionniste":
+    ranking_options.append("IF-TOPSIS")
 
 ranking_method = st.sidebar.selectbox(
     "Méthode de classement",
@@ -268,20 +480,33 @@ weight_method = st.sidebar.selectbox("Méthode de pondération", weight_options)
 
 st.header("Définition du problème")
 
+if imported is not None:
+    default_alt_names = ", ".join(imported["alternatives"])
+    default_crit_names = ", ".join(imported["criteria"])
+    alt_key = {"key": f"alt_names_{import_id}"}
+    crit_key = {"key": f"crit_names_{import_id}"}
+else:
+    default_alt_names = ", ".join([f"A{i+1}" for i in range(n_alternatives)])
+    default_crit_names = ", ".join([f"C{i+1}" for i in range(n_criteria)])
+    alt_key = {}
+    crit_key = {}
+
 col1, col2 = st.columns(2)
 
 with col1:
     alternative_names_text = st.text_input(
         "Noms des alternatives",
-        value=", ".join([f"A{i+1}" for i in range(n_alternatives)]),
-        help="Séparez les noms par des virgules."
+        value=default_alt_names,
+        help="Séparez les noms par des virgules.",
+        **alt_key
     )
 
 with col2:
     criterion_names_text = st.text_input(
         "Noms des critères",
-        value=", ".join([f"C{i+1}" for i in range(n_criteria)]),
-        help="Séparez les noms par des virgules."
+        value=default_crit_names,
+        help="Séparez les noms par des virgules.",
+        **crit_key
     )
 
 alternative_names = [
@@ -353,14 +578,19 @@ def label_table(options, key, index, columns, default):
 
 try:
     if decision_mode == "Crisp":
+        if imported is not None:
+            st.caption("Matrice importée depuis le fichier — modifiable ci-dessous.")
+            initial_values = imported["values"]
+        else:
+            initial_values = np.ones((n_alternatives, n_criteria))
         X_df = pd.DataFrame(
-            np.ones((n_alternatives, n_criteria)),
+            initial_values,
             index=alternative_names,
             columns=criterion_names,
         )
         edited_X = st.data_editor(
             X_df, use_container_width=True, num_rows="fixed",
-            key="decision_matrix_crisp"
+            key=f"decision_matrix_crisp_{import_id}"
         )
         X = edited_X.to_numpy(dtype=float)
 
@@ -381,12 +611,17 @@ try:
         tabs = st.tabs([f"Décideur {index + 1}" for index in range(decision_makers)])
         for index, tab in enumerate(tabs):
             with tab:
+                if index < len(imported_list):
+                    st.caption("Matrice importée depuis le fichier — modifiable ci-dessous.")
+                    initial_labels = imported_list[index]["values"]
+                else:
+                    initial_labels = options[3]
                 edited_labels = label_table(
                     options,
-                    f"decision_matrix_{decision_mode}_{index}",
+                    f"decision_matrix_{decision_mode}_{index}_{import_id}",
                     alternative_names,
                     criterion_names,
-                    options[3],
+                    initial_labels,
                 )
                 decision_matrices.append(
                     convert(edited_labels.to_numpy(dtype=object), scale)
@@ -434,13 +669,50 @@ try:
             "Renseignez la partie supérieure (échelle de Saaty, "
             "par exemple 1, 3 ou 1/3) ; la partie inférieure est réciproque."
         )
+        ahp_import = None
+        ahp_id = "manual"
+        ahp_file = st.file_uploader(
+            "📥 Importer la matrice AHP (CSV / Excel)",
+            type=["csv", "xlsx", "xls"],
+            key="ahp_file",
+            help=(
+                "Matrice carrée (critères × critères). 1re ligne : noms des critères, "
+                "1re colonne : noms (optionnelle). Seule la partie au-dessus de la "
+                "diagonale est lue ; fractions acceptées (1/3)."
+            ),
+        )
+        ahp_template = pd.DataFrame(
+            [
+                [1 if i == j else (3 if j > i else "") for j in range(n_criteria)]
+                for i in range(n_criteria)
+            ],
+            columns=criterion_names,
+            index=criterion_names,
+        ).rename_axis("Critère").reset_index().to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Télécharger un modèle AHP (CSV)", ahp_template,
+            file_name="modele_ahp.csv", mime="text/csv", key="ahp_template"
+        )
+        if ahp_file is not None:
+            try:
+                ahp_sheet = choose_sheet(ahp_file, st, "ahp")
+                ahp_import = read_ahp_file(ahp_file, ahp_sheet, criterion_names)
+                ahp_id = f"{ahp_file.name}_{ahp_file.size}_{ahp_sheet}"
+                st.success("Matrice AHP importée — modifiable ci-dessous.")
+                if ahp_import["note"]:
+                    st.info(ahp_import["note"])
+            except Exception as e:
+                ahp_import = None
+                st.error(f"Import impossible : {e}")
+
         ahp_df = pd.DataFrame(
-            np.ones((n_criteria, n_criteria)),
+            ahp_import["values"] if ahp_import else np.ones((n_criteria, n_criteria)),
             index=criterion_names,
             columns=criterion_names,
         )
         edited_ahp = st.data_editor(
-            ahp_df, use_container_width=True, num_rows="fixed", key="ahp_matrix"
+            ahp_df, use_container_width=True, num_rows="fixed",
+            key=f"ahp_matrix_{ahp_id}"
         )
         comparison_matrix = edited_ahp.to_numpy(dtype=float)
         upper_indices = np.triu_indices(n_criteria, 1)
@@ -474,6 +746,47 @@ try:
             "Pour OW, le critère Worst doit avoir 1."
         )
 
+        bwm_import = None
+        bwm_id = "manual"
+        bwm_file = st.file_uploader(
+            "📥 Importer BO / OW (CSV / Excel)",
+            type=["csv", "xlsx", "xls"],
+            key="bwm_file",
+            help=(
+                "Colonnes : « Critère » (optionnelle), « BO » et « OW », "
+                "une ligne par critère. Valeurs entre 1 et 9."
+            ),
+        )
+        bwm_template = pd.DataFrame({
+            "Critère": criterion_names,
+            "BO": [1 if j == 0 else 2 for j in range(n_criteria)],
+            "OW": [1 if j == n_criteria - 1 else 2 for j in range(n_criteria)],
+        }).to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Télécharger un modèle BWM (CSV)", bwm_template,
+            file_name="modele_bwm.csv", mime="text/csv", key="bwm_template"
+        )
+        if bwm_file is not None:
+            try:
+                bwm_sheet = choose_sheet(bwm_file, st, "bwm")
+                bwm_import = read_bwm_file(bwm_file, bwm_sheet, criterion_names)
+                bwm_id = f"{bwm_file.name}_{bwm_file.size}_{bwm_sheet}"
+                st.success("Comparaisons BO / OW importées — modifiables ci-dessous.")
+                if bwm_import["note"]:
+                    st.info(bwm_import["note"])
+            except Exception as e:
+                bwm_import = None
+                st.error(f"Import impossible : {e}")
+
+        bo_defaults = (
+            bwm_import["bo"] if bwm_import
+            else [1.0 if j == 0 else 2.0 for j in range(n_criteria)]
+        )
+        ow_defaults = (
+            bwm_import["ow"] if bwm_import
+            else [1.0 if j == n_criteria - 1 else 2.0 for j in range(n_criteria)]
+        )
+
         col1, col2 = st.columns(2)
 
         with col1:
@@ -486,9 +799,9 @@ try:
                     criterion_names[j],
                     min_value=1.0,
                     max_value=9.0,
-                    value=1.0 if j == 0 else 2.0,
+                    value=bo_defaults[j],
                     step=1.0,
-                    key=f"bo_{j}"
+                    key=f"bo_{j}_{bwm_id}"
                 )
                 bo.append(value)
 
@@ -502,9 +815,9 @@ try:
                     criterion_names[j],
                     min_value=1.0,
                     max_value=9.0,
-                    value=1.0 if j == n_criteria - 1 else 2.0,
+                    value=ow_defaults[j],
                     step=1.0,
-                    key=f"ow_{j}"
+                    key=f"ow_{j}_{bwm_id}"
                 )
                 ow.append(value)
 
@@ -745,48 +1058,48 @@ except Exception as e:
 
 # COMPARAISON DES METHODES (ROBUSTESSE)
 
-# st.header("Comparaison des méthodes (corrélation de Spearman)")
+st.header("Comparaison des méthodes (corrélation de Spearman)")
 
-# try:
-#     def to_ranks(order):
-#         rank_values = np.empty(len(order), dtype=int)
-#         for position, alternative_index in enumerate(order, start=1):
-#             rank_values[alternative_index - 1] = position
-#         return rank_values
+try:
+    def to_ranks(order):
+        rank_values = np.empty(len(order), dtype=int)
+        for position, alternative_index in enumerate(order, start=1):
+            rank_values[alternative_index - 1] = position
+        return rank_values
 
-#     all_ranks = {
-#         "WSM": to_ranks(waspas(X, weights, criteria_types, lam=1.0)[1]),
-#         "WPM": to_ranks(waspas(X, weights, criteria_types, lam=0.0)[1]),
-#         "WASPAS": to_ranks(waspas(X, weights, criteria_types)[1]),
-#         "TOPSIS": to_ranks(topsis(X, weights, criteria_types)[1]),
-#         "VIKOR": to_ranks(vikor(X, weights, criteria_types)[1]),
-#     }
+    all_ranks = {
+        "WSM": to_ranks(waspas(X, weights, criteria_types, lam=1.0)[1]),
+        "WPM": to_ranks(waspas(X, weights, criteria_types, lam=0.0)[1]),
+        "WASPAS": to_ranks(waspas(X, weights, criteria_types)[1]),
+        "TOPSIS": to_ranks(topsis(X, weights, criteria_types)[1]),
+        "VIKOR": to_ranks(vikor(X, weights, criteria_types)[1]),
+    }
 
-#     if fuzzy_X is not None:
-#         all_ranks["Fuzzy TOPSIS"] = to_ranks(
-#             fuzzy_topsis(
-#                 fuzzy_X,
-#                 fuzzy_W if fuzzy_W is not None else weights,
-#                 criteria_types,
-#             )[1]
-#         )
-#     if if_X is not None:
-#         comparison_weights = (
-#             if_W if if_W is not None else crisp_to_if_weights(weights)
-#         )
-#         all_ranks["IF-TOPSIS"] = to_ranks(
-#             if_topsis(if_X, comparison_weights, criteria_types)[1]
-#         )
+    if fuzzy_X is not None:
+        all_ranks["Fuzzy TOPSIS"] = to_ranks(
+            fuzzy_topsis(
+                fuzzy_X,
+                fuzzy_W if fuzzy_W is not None else weights,
+                criteria_types,
+            )[1]
+        )
+    if if_X is not None:
+        comparison_weights = (
+            if_W if if_W is not None else crisp_to_if_weights(weights)
+        )
+        all_ranks["IF-TOPSIS"] = to_ranks(
+            if_topsis(if_X, comparison_weights, criteria_types)[1]
+        )
 
-#     st.subheader("Rangs par méthode")
-#     st.dataframe(
-#         pd.DataFrame(all_ranks, index=alternative_names),
-#         use_container_width=True,
-#     )
-#     st.subheader("Matrice de corrélation de Spearman")
-#     st.dataframe(spearman_matrix(all_ranks).round(2), use_container_width=True)
-# except Exception as e:
-#     st.warning(f"Comparaison impossible : {e}")
+    st.subheader("Rangs par méthode")
+    st.dataframe(
+        pd.DataFrame(all_ranks, index=alternative_names),
+        use_container_width=True,
+    )
+    st.subheader("Matrice de corrélation de Spearman")
+    st.dataframe(spearman_matrix(all_ranks).round(2), use_container_width=True)
+except Exception as e:
+    st.warning(f"Comparaison impossible : {e}")
 
 
 # RAPPEL

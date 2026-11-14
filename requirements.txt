@@ -1,5 +1,7 @@
 streamlit
 numpy
 pandas==2.3.3
+openpyxl
+xlrd
 scipy
 pyarrow==24.0.0
