@@ -2,21 +2,21 @@ import numpy as np
 
 
 IF_SCALE = {
-    "Très mauvais": (0.10, 0.90),
-    "Mauvais": (0.25, 0.70),
-    "Moyennement mauvais": (0.35, 0.60),
-    "Passable": (0.50, 0.45),
-    "Moyennement bon": (0.60, 0.30),
-    "Bon": (0.75, 0.20),
-    "Très bon": (0.90, 0.10),
+    "Très mauvais (VP)": (0.10, 0.90),
+    "Mauvais (P)": (0.25, 0.70),
+    "Moyennement mauvais (MP)": (0.35, 0.60),
+    "Passable (F)": (0.50, 0.45),
+    "Moyennement bon (MG)": (0.60, 0.30),
+    "Bon (G)": (0.75, 0.20),
+    "Très bon (VG)": (0.90, 0.10),
 }
 
 IF_WEIGHT_SCALE = {
-    "Très peu important": (0.10, 0.90),
-    "Peu important": (0.35, 0.60),
-    "Moyen": (0.50, 0.45),
-    "Important": (0.75, 0.20),
-    "Très important": (0.90, 0.10),
+    "Très faible (VL)": (0.10, 0.90),
+    "Faible (L)": (0.35, 0.60),
+    "Moyen (M)": (0.50, 0.45),
+    "Élevé (H)": (0.75, 0.20),
+    "Très élevé (VH)": (0.90, 0.10),
 }
 
 
